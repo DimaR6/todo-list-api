@@ -18,7 +18,7 @@ use Illuminate\Http\Request;
  *     description="Task management API"
  * )
  */
-class TaskController extends Controller
+class TaskAPIController extends Controller
 {
     public function __construct(
         private TaskService $taskService,
