@@ -2,257 +2,124 @@
 
 namespace App\Http\Controllers\API;
 
+use App\DTOs\TaskDTO;
+use App\Http\Controllers\Controller;
 use App\Http\Requests\API\CreateTaskAPIRequest;
 use App\Http\Requests\API\UpdateTaskAPIRequest;
-use App\Models\Task;
+use App\Http\Resources\TaskResource;
 use App\Repositories\TaskRepository;
+use App\Services\TaskService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use App\Http\Controllers\AppBaseController;
 
 /**
- * Class TaskController
+ * @OA\Tag(
+ *     name="Tasks",
+ *     description="Task management API"
+ * )
  */
-
-class TaskAPIController extends AppBaseController
+class TaskController extends Controller
 {
-    private TaskRepository $taskRepository;
-
-    public function __construct(TaskRepository $taskRepo)
-    {
-        $this->taskRepository = $taskRepo;
-    }
+    public function __construct(
+        private TaskService $taskService,
+        private TaskRepository $taskRepository
+    ) {}
 
     /**
      * @OA\Get(
-     *      path="/tasks",
-     *      summary="getTaskList",
-     *      tags={"Task"},
-     *      description="Get all Tasks",
-     *      @OA\Response(
-     *          response=200,
-     *          description="successful operation",
-     *          @OA\JsonContent(
-     *              type="object",
-     *              @OA\Property(
-     *                  property="success",
-     *                  type="boolean"
-     *              ),
-     *              @OA\Property(
-     *                  property="data",
-     *                  type="array",
-     *                  @OA\Items(ref="#/components/schemas/Task")
-     *              ),
-     *              @OA\Property(
-     *                  property="message",
-     *                  type="string"
-     *              )
-     *          )
-     *      )
+     *     path="/api/tasks",
+     *     summary="List tasks",
+     *     tags={"Tasks"},
+     *     @OA\Parameter(name="status", in="query", @OA\Schema(type="string", enum={"todo", "done"})),
+     *     @OA\Parameter(name="priority", in="query", @OA\Schema(type="integer", minimum=1, maximum=5)),
+     *     @OA\Parameter(name="search", in="query", @OA\Schema(type="string")),
+     *     @OA\Parameter(name="sort", in="query", @OA\Schema(type="string", example="priority:desc,created_at:asc")),
+     *     @OA\Response(
+     *         response=200,
+     *         description="Successful operation",
+     *         @OA\JsonContent(type="array", @OA\Items(ref="#/components/schemas/Task"))
+     *     )
      * )
      */
     public function index(Request $request): JsonResponse
     {
-        $tasks = $this->taskRepository->all(
-            $request->except(['skip', 'limit']),
-            $request->get('skip'),
-            $request->get('limit')
-        );
+        $query = $this->taskRepository->query();
 
-        return $this->sendResponse($tasks->toArray(), 'Tasks retrieved successfully');
+        $query = $this->taskRepository->applyFilters($query, [
+            'status' => $request->status,
+            'priority' => $request->priority,
+            'search' => $request->search,
+        ]);
+
+        $query = $this->taskRepository->applySorting($query, $request->sort);
+
+        return response()->json(TaskResource::collection($query->paginate()));
     }
 
     /**
      * @OA\Post(
-     *      path="/tasks",
-     *      summary="createTask",
-     *      tags={"Task"},
-     *      description="Create Task",
-     *      @OA\RequestBody(
-     *        required=true,
-     *        @OA\JsonContent(ref="#/components/schemas/Task")
-     *      ),
-     *      @OA\Response(
-     *          response=200,
-     *          description="successful operation",
-     *          @OA\JsonContent(
-     *              type="object",
-     *              @OA\Property(
-     *                  property="success",
-     *                  type="boolean"
-     *              ),
-     *              @OA\Property(
-     *                  property="data",
-     *                  ref="#/components/schemas/Task"
-     *              ),
-     *              @OA\Property(
-     *                  property="message",
-     *                  type="string"
-     *              )
-     *          )
-     *      )
+     *     path="/api/tasks",
+     *     summary="Create task",
+     *     tags={"Tasks"},
+     *     @OA\RequestBody(
+     *         required=true,
+     *         @OA\JsonContent(ref="#/components/schemas/Task")
+     *     ),
+     *     @OA\Response(response=201, description="Task created", @OA\JsonContent(ref="#/components/schemas/Task"))
      * )
      */
     public function store(CreateTaskAPIRequest $request): JsonResponse
     {
-        $input = $request->all();
-
-        $task = $this->taskRepository->create($input);
-
-        return $this->sendResponse($task->toArray(), 'Task saved successfully');
-    }
-
-    /**
-     * @OA\Get(
-     *      path="/tasks/{id}",
-     *      summary="getTaskItem",
-     *      tags={"Task"},
-     *      description="Get Task",
-     *      @OA\Parameter(
-     *          name="id",
-     *          description="id of Task",
-     *           @OA\Schema(
-     *             type="integer"
-     *          ),
-     *          required=true,
-     *          in="path"
-     *      ),
-     *      @OA\Response(
-     *          response=200,
-     *          description="successful operation",
-     *          @OA\JsonContent(
-     *              type="object",
-     *              @OA\Property(
-     *                  property="success",
-     *                  type="boolean"
-     *              ),
-     *              @OA\Property(
-     *                  property="data",
-     *                  ref="#/components/schemas/Task"
-     *              ),
-     *              @OA\Property(
-     *                  property="message",
-     *                  type="string"
-     *              )
-     *          )
-     *      )
-     * )
-     */
-    public function show($id): JsonResponse
-    {
-        /** @var Task $task */
-        $task = $this->taskRepository->find($id);
-
-        if (empty($task)) {
-            return $this->sendError('Task not found');
-        }
-
-        return $this->sendResponse($task->toArray(), 'Task retrieved successfully');
+        $task = $this->taskService->create(TaskDTO::fromArray($request->validated()));
+        return response()->json(new TaskResource($task), 201);
     }
 
     /**
      * @OA\Put(
-     *      path="/tasks/{id}",
-     *      summary="updateTask",
-     *      tags={"Task"},
-     *      description="Update Task",
-     *      @OA\Parameter(
-     *          name="id",
-     *          description="id of Task",
-     *           @OA\Schema(
-     *             type="integer"
-     *          ),
-     *          required=true,
-     *          in="path"
-     *      ),
-     *      @OA\RequestBody(
-     *        required=true,
-     *        @OA\JsonContent(ref="#/components/schemas/Task")
-     *      ),
-     *      @OA\Response(
-     *          response=200,
-     *          description="successful operation",
-     *          @OA\JsonContent(
-     *              type="object",
-     *              @OA\Property(
-     *                  property="success",
-     *                  type="boolean"
-     *              ),
-     *              @OA\Property(
-     *                  property="data",
-     *                  ref="#/components/schemas/Task"
-     *              ),
-     *              @OA\Property(
-     *                  property="message",
-     *                  type="string"
-     *              )
-     *          )
-     *      )
+     *     path="/api/tasks/{id}",
+     *     summary="Update task",
+     *     tags={"Tasks"},
+     *     @OA\Parameter(name="id", in="path", required=true, @OA\Schema(type="integer")),
+     *     @OA\RequestBody(
+     *         required=true,
+     *         @OA\JsonContent(ref="#/components/schemas/Task")
+     *     ),
+     *     @OA\Response(response=200, description="Task updated", @OA\JsonContent(ref="#/components/schemas/Task"))
      * )
      */
-    public function update($id, UpdateTaskAPIRequest $request): JsonResponse
+    public function update(UpdateTaskAPIRequest $request, int $id): JsonResponse
     {
-        $input = $request->all();
+        $task = $this->taskService->update($id, TaskDTO::fromArray($request->validated()));
+        return response()->json(new TaskResource($task));
+    }
 
-        /** @var Task $task */
-        $task = $this->taskRepository->find($id);
-
-        if (empty($task)) {
-            return $this->sendError('Task not found');
-        }
-
-        $task = $this->taskRepository->update($input, $id);
-
-        return $this->sendResponse($task->toArray(), 'Task updated successfully');
+    /**
+     * @OA\Patch(
+     *     path="/api/tasks/{id}/complete",
+     *     summary="Mark task as completed",
+     *     tags={"Tasks"},
+     *     @OA\Parameter(name="id", in="path", required=true, @OA\Schema(type="integer")),
+     *     @OA\Response(response=200, description="Task completed", @OA\JsonContent(ref="#/components/schemas/Task"))
+     * )
+     */
+    public function complete(int $id): JsonResponse
+    {
+        $task = $this->taskService->markAsCompleted($id);
+        return response()->json(new TaskResource($task));
     }
 
     /**
      * @OA\Delete(
-     *      path="/tasks/{id}",
-     *      summary="deleteTask",
-     *      tags={"Task"},
-     *      description="Delete Task",
-     *      @OA\Parameter(
-     *          name="id",
-     *          description="id of Task",
-     *           @OA\Schema(
-     *             type="integer"
-     *          ),
-     *          required=true,
-     *          in="path"
-     *      ),
-     *      @OA\Response(
-     *          response=200,
-     *          description="successful operation",
-     *          @OA\JsonContent(
-     *              type="object",
-     *              @OA\Property(
-     *                  property="success",
-     *                  type="boolean"
-     *              ),
-     *              @OA\Property(
-     *                  property="data",
-     *                  type="string"
-     *              ),
-     *              @OA\Property(
-     *                  property="message",
-     *                  type="string"
-     *              )
-     *          )
-     *      )
+     *     path="/api/tasks/{id}",
+     *     summary="Delete task",
+     *     tags={"Tasks"},
+     *     @OA\Parameter(name="id", in="path", required=true, @OA\Schema(type="integer")),
+     *     @OA\Response(response=204, description="Task deleted")
      * )
      */
-    public function destroy($id): JsonResponse
+    public function destroy(int $id): JsonResponse
     {
-        /** @var Task $task */
-        $task = $this->taskRepository->find($id);
-
-        if (empty($task)) {
-            return $this->sendError('Task not found');
-        }
-
-        $task->delete();
-
-        return $this->sendSuccess('Task deleted successfully');
+        $this->taskService->delete($id);
+        return response()->json(null, 204);
     }
 }
