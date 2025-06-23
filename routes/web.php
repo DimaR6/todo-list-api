@@ -14,13 +14,8 @@ use Illuminate\Support\Facades\Route;
 */
 
 Route::get('/', function () {
-    return redirect('/register');
+    return view('welcome');
 });
 
 Route::get('/home', [App\Http\Controllers\HomeController::class, 'index'])->name('home');
 Auth::routes();
-
-Route::middleware(['auth', 'restrict.no.active.magic.link'])->group(function () {
-    Route::resource('luckyDraws', App\Http\Controllers\LuckyDrawController::class);
-    Route::resource('magicLinks', App\Http\Controllers\MagicLinkController::class);
-});
