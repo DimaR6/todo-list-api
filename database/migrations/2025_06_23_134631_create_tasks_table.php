@@ -24,6 +24,10 @@ return new class extends Migration {
             $table->timestamp('completed_at')->nullable();
 
             $table->timestamps();
+
+            $table->index('status');
+            $table->index('priority');
+            $table->fullText(['title', 'description']);
         });
     }
 
